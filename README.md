@@ -36,19 +36,3 @@ The app adheres to modern Android architecture principles:
 This entire codebase — including files, UI designs, layout logic, custom vector icons, and robust database models — has been built, customized, and thoroughly optimized by **Google AI Studio's AI Coding Agent** (powered by DeepMind and Gemini models). 
 
 The application is fully functional, compiling successfully, and complies with edge-to-edge, accessibility (48dp touch targets), and Material 3 design directives.
-
----
-
-## 🚀 How to Run & Push to GitHub
-
-### 1. Push to your Profile
-To publish this repository directly to your personal GitHub account:
-1. Click the **Push to GitHub** icon or open the **Settings Menu** in the top right corner of the Google AI Studio environment.
-2. Link your GitHub account and name the repository `Wallpaper carousel`.
-3. The platform will automatically push all source files, resource folders, configuration assets, and this `README.md` file securely.
-
-### 2. Download APK
-To install on your emulator or physical Android device:
-1. Open the project settings or build sidebar.
-2. Select **Generate APK / AAB**.
-3. Download the generated APK directly, transfer it to your device, and enjoy an automated wallpaper experience!
