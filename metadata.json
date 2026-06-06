@@ -1,0 +1,6 @@
+{
+  "name": "Wallpaper carousel",
+  "description": "Automatic wallpaper rotation service by timer or screen interactions with customizable scaling styles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
