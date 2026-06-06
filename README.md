@@ -2,11 +2,6 @@
 
 A lightweight, resource-optimized, and visually stunning Android application built with **Kotlin**, **Jetpack Compose**, and **Material Design 3**. It automates your home screen and lock screen wallpaper rotation using a customizable list of images.
 
----
-
-## 🎨 Visual Preview
-
-The application features a beautifully polished diagonal split adaptive launcher icon depicting the transition of **Day and Night**, reflecting the dynamic nature of your changing wallpapers.
 
 ---
 
