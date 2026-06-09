@@ -345,6 +345,49 @@ class WallpaperChangerService : Service() {
         super.onDestroy() // Delegates back to base class implementation
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "onTaskRemoved detected. Application swiped away from Recents. Checking configuration auto-recovery...")
+        try {
+            kotlinx.coroutines.runBlocking {
+                val config = repository.getConfig()
+                if (config.isActive) {
+                    Log.i(TAG, "Service is marked active in database. Scheduling recovery alarm in 1.5 seconds.")
+                    val restartIntent = Intent(applicationContext, WallpaperChangerService::class.java)
+                    val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                    } else {
+                        PendingIntent.FLAG_ONE_SHOT
+                    }
+                    val restartPendingIntent = PendingIntent.getService(
+                        applicationContext,
+                        9912,
+                        restartIntent,
+                        pendingFlags
+                    )
+                    
+                    val alarmManager = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                    val triggerAt = System.currentTimeMillis() + 1500
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setAndAllowWhileIdle(
+                            android.app.AlarmManager.RTC_WAKEUP,
+                            triggerAt,
+                            restartPendingIntent
+                        )
+                    } else {
+                        alarmManager.set(
+                            android.app.AlarmManager.RTC_WAKEUP,
+                            triggerAt,
+                            restartPendingIntent
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to schedule service recovery in onTaskRemoved", e)
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {

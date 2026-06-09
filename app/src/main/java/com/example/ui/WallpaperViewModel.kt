@@ -51,6 +51,21 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
             initialValue = emptyList()
         )
 
+    init {
+        viewModelScope.launch {
+            try {
+                val config = repository.getConfig()
+                if (config.isActive) {
+                    Log.i("WallpaperViewModel", "Initializing WallpaperViewModel. Active configuration found. Proactively starting background service.")
+                    val serviceIntent = Intent(context, WallpaperChangerService::class.java)
+                    ContextCompat.startForegroundService(context, serviceIntent)
+                }
+            } catch (e: Exception) {
+                Log.e("WallpaperViewModel", "Failed to start wallpaper service on ViewModel initialization", e)
+            }
+        }
+    }
+
     /**
      * Toggles the automatic background wallpaper rotation state.
      * Starts or stops the background Foreground Service orchestrator accordingly.
