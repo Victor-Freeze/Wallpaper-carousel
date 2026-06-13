@@ -44,6 +44,15 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".service.WallpaperAlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.service.ACTION_TRIGGER_ALARM" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

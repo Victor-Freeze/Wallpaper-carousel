@@ -1,5 +1,6 @@
 package com.example.service
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -110,6 +111,9 @@ class WallpaperChangerService : Service() {
             stopWallpaperService()
             return START_NOT_STICKY // Safe non-restart policy when explicit user shutdown is called
         }
+        if (intent?.action == ACTION_TIMER_CHECK) {
+            Log.i(TAG, "onStartCommand: Triggered by hardware AlarmManager.")
+        }
         // Force immediate recalculation of schedule dynamically (e.g. config updated in UI)
         checkTimerTrigger()
         return START_STICKY // Return code telling the OS to restart this service if it gets killed unexpectedly
@@ -148,7 +152,7 @@ class WallpaperChangerService : Service() {
                         Log.i(TAG, "Timer elapsed, but user has not seen the previous wallpaper. Resetting timer and sleeping.")
                         repository.saveConfig(config.copy(lastChangedTimestamp = System.currentTimeMillis()))
                         // Reschedule for a full interval
-                        handler.postDelayed(checkRunnable, targetIntervalMs)
+                        scheduleAlarm(targetIntervalMs)
                         return@launch
                     }
 
@@ -167,23 +171,94 @@ class WallpaperChangerService : Service() {
                         } else {
                             5 * 60 * 1000L // Retry in 5 minutes if it fails, to save battery and prevent crash loops
                         }
-                        handler.postDelayed(checkRunnable, nextDelay)
+                        scheduleAlarm(nextDelay)
                     } else {
                         Log.i(TAG, "Timer interval elapsed, but user is interacting (screen ON). Queuing change until sleep.")
                         isPendingTimerChange = true
                         // While interacting, check back in 30 seconds
-                        handler.postDelayed(checkRunnable, 30000)
+                        scheduleAlarm(30000)
                     }
                 } else {
                     // Not elapsed yet! Schedule check exactly for the remaining duration
                     // Coerce to minimum 10 seconds to avoid negative/trivial delays
                     val delay = remainingMs.coerceAtLeast(10000)
                     Log.d(TAG, "Timer not elapsed. Next check scheduled in ${delay / 60000}m ${ (delay % 60000) / 1000 }s.")
-                    handler.postDelayed(checkRunnable, delay)
+                    scheduleAlarm(delay)
                 }
             } else {
                 Log.d(TAG, "Interactive screen-off triggers are active. Periodic check loop is suspended to save battery.")
             }
+        }
+    }
+
+    /**
+     * Set a background alarm via Android's hardware RTC AlarmManager.
+     * Includes a fallback handler check in case memory constraints allow us to stay alive.
+     */
+    private fun scheduleAlarm(delayMs: Long) {
+        cancelAlarm()
+
+        Log.i(TAG, "Scheduling hardware alarm check in ${delayMs / 1000} seconds.")
+        val alarmIntent = Intent(this, WallpaperAlarmReceiver::class.java).apply {
+            action = WallpaperAlarmReceiver.ACTION_TRIGGER_ALARM
+        }
+        val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            9924,
+            alarmIntent,
+            pendingFlags
+        )
+
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val triggerAt = System.currentTimeMillis() + delayMs
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAt,
+                pendingIntent
+            )
+        } else {
+            alarmManager.set(
+                AlarmManager.RTC_WAKEUP,
+                triggerAt,
+                pendingIntent
+            )
+        }
+
+        // Parallel local handler backup scheduler for active process situations
+        handler.removeCallbacks(checkRunnable)
+        handler.postDelayed(checkRunnable, delayMs)
+    }
+
+    /**
+     * Cleans up scheduled AlarmManager events to prevent duplicate executions.
+     */
+    private fun cancelAlarm() {
+        val alarmIntent = Intent(this, WallpaperAlarmReceiver::class.java).apply {
+            action = WallpaperAlarmReceiver.ACTION_TRIGGER_ALARM
+        }
+        val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_NO_CREATE
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            9924,
+            alarmIntent,
+            pendingFlags
+        )
+        if (pendingIntent != null) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+            Log.d(TAG, "Successfully cancelled existing AlarmManager check.")
         }
     }
 
@@ -298,6 +373,7 @@ class WallpaperChangerService : Service() {
      */
     private fun stopWallpaperService() {
         Log.i(TAG, "Tearing down automatic wallpaper service completely.")
+        cancelAlarm()
         serviceScope.launch {
             // Unregister isActive in Database to sync main UI state
             val config = repository.getConfig()
@@ -321,7 +397,8 @@ class WallpaperChangerService : Service() {
     override fun onDestroy() {
         Log.i(TAG, "Service onDestroy. Releasing all resources and unregistering receivers.")
         
-        // 1. Threading safety: Stop pending delayed timer loops immediately
+        // 1. Threading safety: Stop pending delayed timer loops and alarms immediately
+        cancelAlarm()
         handler.removeCallbacks(checkRunnable)
         
         // 2. Observer safety: Try/catch unregistering the dynamic BroadcastReceiver
@@ -394,5 +471,6 @@ class WallpaperChangerService : Service() {
         private const val TAG = "WallpaperService"
         private const val NOTIFICATION_ID = 8802
         const val ACTION_STOP = "com.example.service.ACTION_STOP"
+        const val ACTION_TIMER_CHECK = "com.example.service.ACTION_TIMER_CHECK"
     }
 }
