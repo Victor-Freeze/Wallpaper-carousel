@@ -373,7 +373,8 @@ class WallpaperChangerService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.i(TAG, "onTaskRemoved detected. Application swiped away from Recents. Relying on START_STICKY and hardware helpers.")
+        Log.i(TAG, "onTaskRemoved detected. Application swiped away from Recents. Scheduling 1-second recovery alarm to restore notification if possible.")
+        WallpaperAlarmReceiver.scheduleAlarm(applicationContext, 1000)
         super.onTaskRemoved(rootIntent)
     }
 

@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.example.db.WallpaperRepository
 import com.example.utils.WallpaperHelper
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +36,7 @@ class WallpaperAlarmReceiver : BroadcastReceiver() {
                     val repository = WallpaperRepository(appContext)
                     val config = repository.getConfig()
                     
-                    if (config.isActive && config.triggerType == "TIMER") {
+                    if (config.isActive) {
                         if (WallpaperChangerService.isRunning) {
                             Log.i(TAG, "WallpaperChangerService is running. Forwarding intent to service.")
                             val serviceIntent = Intent(appContext, WallpaperChangerService::class.java).apply {
@@ -44,15 +45,28 @@ class WallpaperAlarmReceiver : BroadcastReceiver() {
                             try {
                                 appContext.startService(serviceIntent)
                             } catch (secEx: SecurityException) {
-                                Log.e(TAG, "SecurityException forwarding to running service. Falling back to direct execution.", secEx)
-                                executeDirectRotation(appContext, repository)
+                                Log.e(TAG, "SecurityException forwarding to running service. Falling back to direct evaluation.", secEx)
+                                if (config.triggerType == "TIMER") {
+                                    evaluateAndExecuteRotation(appContext, repository, config)
+                                }
                             }
                         } else {
-                            Log.i(TAG, "WallpaperChangerService is NOT running. Performing direct background rotation.")
-                            executeDirectRotation(appContext, repository)
+                            Log.i(TAG, "WallpaperChangerService is NOT running. Attempting to start service as foreground first.")
+                            val serviceIntent = Intent(appContext, WallpaperChangerService::class.java).apply {
+                                action = WallpaperChangerService.ACTION_TIMER_CHECK
+                            }
+                            try {
+                                ContextCompat.startForegroundService(appContext, serviceIntent)
+                                Log.i(TAG, "Successfully started WallpaperChangerService as foreground.")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to start service as foreground (Android 14 background restrictions). Falling back to background evaluations.", e)
+                                if (config.triggerType == "TIMER") {
+                                    evaluateAndExecuteRotation(appContext, repository, config)
+                                }
+                            }
                         }
                     } else {
-                        Log.d(TAG, "Alarm triggered but rotation is inactive or not set to TIMER mode.")
+                        Log.d(TAG, "Alarm triggered but rotation is inactive.")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in onReceive handling", e)
@@ -63,18 +77,39 @@ class WallpaperAlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private suspend fun executeDirectRotation(context: Context, repository: WallpaperRepository) {
-        val config = repository.getConfig()
-        val success = WallpaperHelper.performWallpaperChange(context, config, repository)
-        
-        // Re-read updated config and schedule next interval alarm
-        val updatedConfig = repository.getConfig()
-        val nextDelay = if (success) {
-            updatedConfig.intervalMinutes * 60 * 1000L
+    private suspend fun evaluateAndExecuteRotation(
+        context: Context,
+        repository: WallpaperRepository,
+        config: com.example.db.WallpaperConfigEntity
+    ) {
+        val lastSuccess = config.lastChangedTimestamp
+        val elapsedMs = System.currentTimeMillis() - lastSuccess
+        val targetIntervalMs = config.intervalMinutes * 60 * 1000L
+        val remainingMs = targetIntervalMs - elapsedMs
+
+        if (remainingMs <= 0) {
+            if (!config.hasSeenLastChange) {
+                Log.i(TAG, "Interval elapsed, but user has not seen previous change. Postponing and rescheduling alarm.")
+                repository.saveConfig(config.copy(lastChangedTimestamp = System.currentTimeMillis()))
+                scheduleAlarm(context, targetIntervalMs)
+                return
+            }
+
+            Log.i(TAG, "Interval fully elapsed. Performing direct background rotation.")
+            val success = WallpaperHelper.performWallpaperChange(context, config, repository)
+            
+            val updatedConfig = repository.getConfig()
+            val nextDelay = if (success) {
+                updatedConfig.intervalMinutes * 60 * 1000L
+            } else {
+                5 * 60 * 1000L
+            }
+            scheduleAlarm(context, nextDelay)
         } else {
-            5 * 60 * 1000L // Retry in 5 minutes if it fails
+            val delay = remainingMs.coerceAtLeast(5000)
+            Log.d(TAG, "Interval not reached yet. Next check scheduled in ${delay / 1000} seconds.")
+            scheduleAlarm(context, delay)
         }
-        scheduleAlarm(context, nextDelay)
     }
 
     companion object {
