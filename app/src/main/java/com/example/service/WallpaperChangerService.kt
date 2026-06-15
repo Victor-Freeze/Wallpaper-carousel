@@ -79,6 +79,7 @@ class WallpaperChangerService : Service() {
      */
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         Log.i(TAG, "Service onCreate. Initializing background wallpaper engine.")
         
         // Composition initialization
@@ -196,40 +197,7 @@ class WallpaperChangerService : Service() {
      * Includes a fallback handler check in case memory constraints allow us to stay alive.
      */
     private fun scheduleAlarm(delayMs: Long) {
-        cancelAlarm()
-
-        Log.i(TAG, "Scheduling hardware alarm check in ${delayMs / 1000} seconds.")
-        val alarmIntent = Intent(this, WallpaperAlarmReceiver::class.java).apply {
-            action = WallpaperAlarmReceiver.ACTION_TRIGGER_ALARM
-        }
-        val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            this,
-            9924,
-            alarmIntent,
-            pendingFlags
-        )
-
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val triggerAt = System.currentTimeMillis() + delayMs
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
-        } else {
-            alarmManager.set(
-                AlarmManager.RTC_WAKEUP,
-                triggerAt,
-                pendingIntent
-            )
-        }
+        WallpaperAlarmReceiver.scheduleAlarm(this, delayMs)
 
         // Parallel local handler backup scheduler for active process situations
         handler.removeCallbacks(checkRunnable)
@@ -240,26 +208,7 @@ class WallpaperChangerService : Service() {
      * Cleans up scheduled AlarmManager events to prevent duplicate executions.
      */
     private fun cancelAlarm() {
-        val alarmIntent = Intent(this, WallpaperAlarmReceiver::class.java).apply {
-            action = WallpaperAlarmReceiver.ACTION_TRIGGER_ALARM
-        }
-        val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-        } else {
-            PendingIntent.FLAG_NO_CREATE
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            this,
-            9924,
-            alarmIntent,
-            pendingFlags
-        )
-        if (pendingIntent != null) {
-            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            alarmManager.cancel(pendingIntent)
-            pendingIntent.cancel()
-            Log.d(TAG, "Successfully cancelled existing AlarmManager check.")
-        }
+        WallpaperAlarmReceiver.cancelAlarm(this)
     }
 
     private fun handleScreenOffTrigger() {
@@ -395,6 +344,7 @@ class WallpaperChangerService : Service() {
      * Ensures all acquired hardware bindings, schedulers, and asynchronous components are released.
      */
     override fun onDestroy() {
+        isRunning = false
         Log.i(TAG, "Service onDestroy. Releasing all resources and unregistering receivers.")
         
         // 1. Threading safety: Stop pending delayed timer loops and alarms immediately
@@ -423,45 +373,7 @@ class WallpaperChangerService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.i(TAG, "onTaskRemoved detected. Application swiped away from Recents. Checking configuration auto-recovery...")
-        try {
-            kotlinx.coroutines.runBlocking {
-                val config = repository.getConfig()
-                if (config.isActive) {
-                    Log.i(TAG, "Service is marked active in database. Scheduling recovery alarm in 1.5 seconds.")
-                    val restartIntent = Intent(applicationContext, WallpaperChangerService::class.java)
-                    val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-                    } else {
-                        PendingIntent.FLAG_ONE_SHOT
-                    }
-                    val restartPendingIntent = PendingIntent.getService(
-                        applicationContext,
-                        9912,
-                        restartIntent,
-                        pendingFlags
-                    )
-                    
-                    val alarmManager = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-                    val triggerAt = System.currentTimeMillis() + 1500
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        alarmManager.setAndAllowWhileIdle(
-                            android.app.AlarmManager.RTC_WAKEUP,
-                            triggerAt,
-                            restartPendingIntent
-                        )
-                    } else {
-                        alarmManager.set(
-                            android.app.AlarmManager.RTC_WAKEUP,
-                            triggerAt,
-                            restartPendingIntent
-                        )
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to schedule service recovery in onTaskRemoved", e)
-        }
+        Log.i(TAG, "onTaskRemoved detected. Application swiped away from Recents. Relying on START_STICKY and hardware helpers.")
         super.onTaskRemoved(rootIntent)
     }
 
@@ -472,5 +384,8 @@ class WallpaperChangerService : Service() {
         private const val NOTIFICATION_ID = 8802
         const val ACTION_STOP = "com.example.service.ACTION_STOP"
         const val ACTION_TIMER_CHECK = "com.example.service.ACTION_TIMER_CHECK"
+        
+        @Volatile
+        var isRunning = false
     }
 }

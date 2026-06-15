@@ -21,9 +21,14 @@ class BootReceiver : BroadcastReceiver() {
                     val repo = WallpaperRepository(context)
                     val config = repo.getConfig()
                     if (config.isActive) {
-                        Log.i("BootReceiver", "Wallpaper rotation is ACTIVE. Restarting WallpaperChangerService.")
-                        val serviceIntent = Intent(context, WallpaperChangerService::class.java)
-                        ContextCompat.startForegroundService(context, serviceIntent)
+                        if (config.triggerType == "TIMER") {
+                            Log.i("BootReceiver", "Wallpaper rotation is ACTIVE and TIMER trigger is set. Scheduling first helper alarm.")
+                            WallpaperAlarmReceiver.scheduleAlarm(context, 5000) // Wakes up in 5 seconds
+                        } else {
+                            Log.i("BootReceiver", "Wallpaper rotation is ACTIVE and INTERACTION trigger is set. Starting WallpaperChangerService.")
+                            val serviceIntent = Intent(context, WallpaperChangerService::class.java)
+                            ContextCompat.startForegroundService(context, serviceIntent)
+                        }
                     } else {
                         Log.i("BootReceiver", "Wallpaper rotation is INACTIVE. No action taken.")
                     }
