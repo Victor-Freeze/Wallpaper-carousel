@@ -305,8 +305,20 @@ class WallpaperChangerService : Service() {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "startForeground with ServiceInfo error. Trying fallback...", e)
-                startForeground(NOTIFICATION_ID, notification)
+                Log.e(TAG, "startForeground with ServiceInfo error. Trying fallback with explicit type.", e)
+                try {
+                    // On API 34+, if we don't provide a type, it might crash with MissingForegroundServiceTypeException
+                    // if it was already required. We retry with the type if possible or a safe fallback.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                    } else {
+                        startForeground(NOTIFICATION_ID, notification)
+                    }
+                } catch (fallbackEx: Exception) {
+                    Log.e(TAG, "Critical failure: startForeground failed even in fallback.", fallbackEx)
+                    // If we absolutely can't start foreground, we might need to stopSelf to avoid ANRs/Crashes
+                    // but since this is onCreate, we try to survive.
+                }
             }
         } else {
             startForeground(NOTIFICATION_ID, notification)

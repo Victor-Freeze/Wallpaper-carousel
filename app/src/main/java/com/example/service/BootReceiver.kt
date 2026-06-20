@@ -27,7 +27,13 @@ class BootReceiver : BroadcastReceiver() {
                         } else {
                             Log.i("BootReceiver", "Wallpaper rotation is ACTIVE and INTERACTION trigger is set. Starting WallpaperChangerService.")
                             val serviceIntent = Intent(context, WallpaperChangerService::class.java)
-                            ContextCompat.startForegroundService(context, serviceIntent)
+                            try {
+                                ContextCompat.startForegroundService(context, serviceIntent)
+                            } catch (e: Exception) {
+                                Log.e("BootReceiver", "Failed to start service on boot. Scheduling alarm as fallback.", e)
+                                // Fallback to alarm even if trigger is INTERACTION, to try and recover later
+                                WallpaperAlarmReceiver.scheduleAlarm(context, 10000)
+                            }
                         }
                     } else {
                         Log.i("BootReceiver", "Wallpaper rotation is INACTIVE. No action taken.")

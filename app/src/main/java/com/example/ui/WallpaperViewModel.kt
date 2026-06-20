@@ -58,7 +58,11 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
                 if (config.isActive) {
                     Log.i("WallpaperViewModel", "Initializing WallpaperViewModel. Active configuration found. Proactively starting background service.")
                     val serviceIntent = Intent(context, WallpaperChangerService::class.java)
-                    ContextCompat.startForegroundService(context, serviceIntent)
+                    try {
+                        ContextCompat.startForegroundService(context, serviceIntent)
+                    } catch (e: Exception) {
+                        Log.e("WallpaperViewModel", "Deny background service start on init. Service will resume on next alarm or app interaction.", e)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("WallpaperViewModel", "Failed to start wallpaper service on ViewModel initialization", e)
@@ -84,10 +88,23 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
             val serviceIntent = Intent(context, WallpaperChangerService::class.java)
             if (enabled) {
                 Log.i("WallpaperViewModel", "Enabling Auto-Wallpaper rotation. Starting Service.")
-                ContextCompat.startForegroundService(context, serviceIntent)
+                try {
+                    ContextCompat.startForegroundService(context, serviceIntent)
+                } catch (e: Exception) {
+                    Log.e("WallpaperViewModel", "Failed to start service on toggle. Rotation will occur on next hardware alarm.", e)
+                    // If start fails, we ensure at least the alarm is scheduled for TIMER mode
+                    if (updated.triggerType == "TIMER") {
+                        val delay = updated.intervalMinutes * 60 * 1000L
+                        com.example.service.WallpaperAlarmReceiver.scheduleAlarm(context, delay)
+                    }
+                }
             } else {
                 Log.i("WallpaperViewModel", "Disabling Auto-Wallpaper rotation. Stopping Service.")
-                context.stopService(serviceIntent)
+                try {
+                    context.stopService(serviceIntent)
+                } catch (e: Exception) {
+                    Log.e("WallpaperViewModel", "Error stopping service", e)
+                }
             }
         }
     }
@@ -187,7 +204,11 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
             val current = repository.getConfig()
             if (current.isActive) {
                 val serviceIntent = Intent(context, WallpaperChangerService::class.java)
-                ContextCompat.startForegroundService(context, serviceIntent)
+                try {
+                    ContextCompat.startForegroundService(context, serviceIntent)
+                } catch (e: Exception) {
+                    Log.e("WallpaperViewModel", "Failed to restart service after config change.", e)
+                }
             }
         }
     }

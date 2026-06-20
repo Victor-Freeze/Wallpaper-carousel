@@ -44,22 +44,22 @@ class WallpaperAlarmReceiver : BroadcastReceiver() {
                             }
                             try {
                                 appContext.startService(serviceIntent)
-                            } catch (secEx: SecurityException) {
-                                Log.e(TAG, "SecurityException forwarding to running service. Falling back to direct evaluation.", secEx)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to forward intent to running service. Falling back to direct evaluation.", e)
                                 if (config.triggerType == "TIMER") {
                                     evaluateAndExecuteRotation(appContext, repository, config)
                                 }
                             }
                         } else {
-                            Log.i(TAG, "WallpaperChangerService is NOT running. Attempting to start service as foreground first.")
+                            Log.i(TAG, "WallpaperChangerService is NOT running. Attempting to start service as foreground.")
                             val serviceIntent = Intent(appContext, WallpaperChangerService::class.java).apply {
                                 action = WallpaperChangerService.ACTION_TIMER_CHECK
                             }
                             try {
                                 ContextCompat.startForegroundService(appContext, serviceIntent)
-                                Log.i(TAG, "Successfully started WallpaperChangerService as foreground.")
+                                Log.i(TAG, "Successfully requested WallpaperChangerService start.")
                             } catch (e: Exception) {
-                                Log.e(TAG, "Failed to start service as foreground (Android 14 background restrictions). Falling back to background evaluations.", e)
+                                Log.e(TAG, "Failed to start service (Background Start Restriction). Falling back to direct background evaluation.", e)
                                 if (config.triggerType == "TIMER") {
                                     evaluateAndExecuteRotation(appContext, repository, config)
                                 }
